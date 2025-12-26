@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ku" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>CHESH BIN - Cinema Pro</title>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <style>
+        :root { --primary: #e50914; --bg: #000; --card-bg: #111; --text: #fff; --header-bg: rgba(0,0,0,0.95); }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+        body { background: var(--bg); color: var(--text); transition: 0.3s; overflow-x: hidden; }
+        header { background: var(--header-bg); height: 65px; display: flex; justify-content: space-between; align-items: center; padding: 0 5%; position: fixed; top: 0; width: 100%; z-index: 1000; border-bottom: 1px solid rgba(128,128,128,0.1); backdrop-filter: blur(10px); }
+        .logo { font-size: 1.5rem; font-weight: 900; color: var(--primary); cursor: pointer; }
+        .sidebar { position: fixed; top: 0; right: -100%; width: 280px; height: 100%; background: var(--card-bg); z-index: 2000; transition: 0.4s; padding: 20px; border-left: 2px solid var(--primary); overflow-y: auto; }
+        .sidebar.active { right: 0; }
+        .sidebar-item { padding: 12px; margin-bottom: 8px; border-radius: 8px; cursor: pointer; background: rgba(255,255,255,0.05); text-align: right; font-weight: bold; }
+        .sub-menu { display: none; padding-right: 20px; border-right: 1px solid var(--primary); margin-bottom: 10px; }
+        .sub-menu div { padding: 8px; font-size: 0.85rem; opacity: 0.8; cursor: pointer; }
+        .slider-container { width: 100%; height: 350px; position: relative; margin-top: 65px; overflow: hidden; display: none; }
+        .slide { position: absolute; inset: 0; opacity: 0; transition: 0.8s; background-size: cover; background-position: center; }
+        .slide.active { opacity: 1; }
+        .slide-overlay { position: absolute; inset: 0; background: linear-gradient(to top, var(--bg) 15%, transparent 70%); display: flex; flex-direction: column; justify-content: flex-end; padding: 40px 5%; }
+        .watch-btn { padding: 6px 12px; background: var(--primary); color: white; border: none; border-radius: 4px; font-size: 0.7rem; font-weight: bold; cursor: pointer; width: fit-content; margin-top: 5px; }
+        .dots-container { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px; z-index: 10; }
+        .dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,0.3); cursor: pointer; transition: 0.3s; }
+        .dot.active { background: var(--primary); width: 15px; border-radius: 10px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; padding: 20px 5%; }
+        .card { background: var(--card-bg); border-radius: 8px; overflow: hidden; position: relative; }
+        .card img { width: 100%; aspect-ratio: 2/3; object-fit: cover; cursor: pointer; }
+        .year-tag { position: absolute; top: 6px; right: 6px; background: rgba(229, 9, 20, 0.85); color: white; padding: 2px 5px; border-radius: 3px; font-size: 0.65rem; font-weight: bold; }
+        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 3000; justify-content: center; align-items: center; }
+        .admin-form { background: #1a1a1a; padding: 25px; width: 95%; max-width: 450px; border-radius: 15px; color: white; border: 1px solid #333; max-height: 90vh; overflow-y: auto; }
+        .admin-input { width: 100%; padding: 10px; margin-bottom: 10px; background: #222; border: 1px solid #444; color: white; border-radius: 5px; }
+        #videoModal { display: none; position: fixed; inset: 0; background: #000; z-index: 9999; flex-direction: column; }
+        footer { text-align: center; padding: 20px; font-size: 0.8rem; opacity: 0.6; border-top: 1px solid rgba(128,128,128,0.1); margin-top: 20px; color: var(--text); }
+        @media (max-width: 600px) { .slider-container { height: 260px; } .grid { grid-template-columns: repeat(2, 1fr); } }
+    </style>
+</head>
+<body>
+<canvas id="snow" style="position:fixed; inset:0; pointer-events:none; z-index:9998;"></canvas>
+
+<header>
+    <div class="logo" onclick="handleAdmin()">CHESH<span>BIN</span></div>
+    <div style="display:flex; gap:15px;">
+        <button onclick="toggleSearch()" style="background:none; border:none; color:var(--text); cursor:pointer;"><svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><path d="M21 21l-4.35-4.35"></path></svg></button>
+        <button onclick="toggleSidebar()" style="background:none; border:none; color:var(--text); cursor:pointer;"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"></path></svg></button>
+    </div>
+</header>
+
+<div id="searchBar" style="display:none; position:fixed; top:65px; width:100%; padding:10px; background:var(--header-bg); z-index:999; border-bottom:1px solid var(--primary);">
+    <input type="text" id="searchInput" placeholder="بگەڕێ..." onkeyup="searchMovies()" style="width:100%; padding:12px; border-radius:25px; background:rgba(255,255,255,0.05); color:var(--text); border:1px solid var(--primary); outline:none;">
+</div>
+
+<div class="sidebar" id="sidebar">
+    <div style="display:flex; gap:5px; margin-bottom:15px;">
+        <button onclick="setTheme('black')" style="flex:1; padding:8px; border-radius:5px; background:#111; color:white; border:1px solid #333; cursor:pointer;">Dark</button>
+        <button onclick="setTheme('white')" style="flex:1; padding:8px; border-radius:5px; background:#fff; color:#000; border:1px solid #ccc; cursor:pointer;">Light</button>
+    </div>
+    <div class="sidebar-item" onclick="filterData('هەمووی')">🏠 سەرەکی</div>
+    <div class="sidebar-item" onclick="toggleSub('m-movies')">🎬 فیلمەکان</div>
+    <div class="sub-menu" id="m-movies">
+        <div onclick="filterData('فیلم', 'ئەمریکی')">ئەمریکی</div>
+        <div onclick="filterData('فیلم', 'کوردی')">کوردی</div>
+        <div onclick="filterData('فیلم', 'فارسی')">فارسی</div>
+        <div onclick="filterData('فیلم', 'تۆبڵەکراو')">دۆبلەکراو</div>
+    </div>
+    <div class="sidebar-item" onclick="toggleSub('m-series')">📺 زنجیرەکان</div>
+    <div class="sub-menu" id="m-series">
+        <div onclick="filterData('زنجیرە', 'ئەمریکی')">ئەمریکی</div>
+        <div onclick="filterData('زنجیرە', 'فارسی')">فارسی</div>
+        <div onclick="filterData('زنجیرە', 'تۆبڵەکراو')">دۆبلەکراو</div>
+    </div>
+</div>
+
+<div class="slider-container" id="sliderWrap">
+    <div id="sliderContent"></div>
+    <div class="dots-container" id="dotsContainer"></div>
+</div>
+
+<div class="grid" id="mainGrid"></div>
+
+<footer>
+    مافی پارێزراوە بۆ چێژبین © <span id="currentYear"></span>
+</footer>
+
+<div id="loginModal" class="modal">
+    <div class="admin-form" style="text-align:center;">
+        <h3>ئەدمین</h3><br>
+        <input type="password" id="adminPass" class="admin-input" placeholder="ڕەمز بنووسە">
+        <button onclick="checkPass()" style="width:100%; padding:12px; background:var(--primary); color:white; border:none; border-radius:5px;">چوونەژوورەوە</button>
+        <button onclick="closeModals()" style="background:none; color:#777; border:none; margin-top:10px;">داخستن</button>
+    </div>
+</div>
+
+<div id="adminModal" class="modal">
+    <div class="admin-form">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+            <h3 style="color:var(--primary);">کۆنترۆڵ پانێڵ</h3>
+            <button onclick="toggleSnow()" id="snowBtn" style="padding:5px 10px; border-radius:4px; border:none; background:green; color:white; font-size:0.7rem;">❄️ بەفر: کارایە</button>
+        </div>
+        <select id="mType" class="admin-input" onchange="toggleTypeFields()"><option value="فیلم">فیلم</option><option value="زنجیرە">زنجیرە</option></select>
+        <input type="text" id="mTitle" class="admin-input" placeholder="ناونیشان">
+        <input type="text" id="mPoster" class="admin-input" placeholder="لینکی پۆستەر">
+        <input type="text" id="mVideo" class="admin-input" placeholder="لینکی ڤیدیۆ">
+        <div style="display:flex; gap:5px;">
+            <select id="mLang" class="admin-input"><option value="ئەمریکی">ئەمریکی</option><option value="کوردی">کوردی</option><option value="فارسی">فارسی</option><option value="تۆبڵەکراو">دۆبلەکراو</option></select>
+            <input type="number" id="mYear" class="admin-input" placeholder="ساڵ">
+        </div>
+        <div id="seriesFields" style="display:none;"><input type="text" id="mSeason" class="admin-input" placeholder="وەررز و ئەڵقە"></div>
+        <button onclick="saveToFirebase()" style="width:100%; padding:14px; background:var(--primary); color:white; border:none; border-radius:8px; font-weight:bold;">بڵاوکردنەوە</button>
+        <button onclick="closeModals()" style="width:100%; background:none; color:#777; border:none; margin-top:10px;">داخستن</button>
+    </div>
+</div>
+
+<div id="videoModal">
+    <div style="padding:15px; display:flex; justify-content:space-between; background:#111;">
+        <span onclick="closeVideo()" style="cursor:pointer;">✕ داخستن</span>
+        <span id="vTitle"></span>
+    </div>
+    <div style="flex:1; position:relative;"><iframe id="videoFrame" style="position:absolute; width:100%; height:100%; border:none;" allowfullscreen></iframe></div>
+</div>
+
+<script>
+    const firebaseConfig = { apiKey: "AIzaSyDURAZSSLimqp5LiHS5rB7cB1jFMKQjG7c", authDomain: "cheshbin.firebaseapp.com", projectId: "cheshbin", storageBucket: "cheshbin.firebasestorage.app", messagingSenderId: "386939488198", appId: "1:386939488198:web:08fa4d0348fb9eba6a54c7" };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const ADMIN_PASS = "c2025";
+    let allData = [], currentSlideIndex = 0, isSnowing = true;
+
+    document.getElementById('currentYear').innerText = new Date().getFullYear();
+
+    function handleAdmin() { 
+        window.clicks = (window.clicks || 0) + 1;
+        if(window.clicks === 6) { document.getElementById('loginModal').style.display = 'flex'; window.clicks = 0; }
+        setTimeout(() => window.clicks = 0, 3000);
+    }
+    function checkPass() {
+        if(document.getElementById('adminPass').value === ADMIN_PASS) {
+            closeModals(); document.getElementById('adminModal').style.display = 'flex';
+            document.getElementById('adminPass').value = "";
+        } else { alert("ڕەمز هەڵەیە!"); }
+    }
+    function setTheme(m) {
+        if(m === 'white') {
+            document.documentElement.style.setProperty('--bg', '#ffffff');
+            document.documentElement.style.setProperty('--card-bg', '#f5f5f5');
+            document.documentElement.style.setProperty('--text', '#111');
+            document.documentElement.style.setProperty('--header-bg', 'rgba(255,255,255,0.98)');
+        } else {
+            document.documentElement.style.setProperty('--bg', '#000000');
+            document.documentElement.style.setProperty('--card-bg', '#111111');
+            document.documentElement.style.setProperty('--text', '#ffffff');
+            document.documentElement.style.setProperty('--header-bg', 'rgba(0,0,0,0.95)');
+        }
+        localStorage.setItem('site_theme', m);
+    }
+    if(localStorage.getItem('site_theme')) setTheme(localStorage.getItem('site_theme'));
+
+    function toggleSnow() {
+        isSnowing = !isSnowing;
+        document.getElementById('snowBtn').innerText = isSnowing ? "❄️ بەفر: کارایە" : "❄️ بەفر: ناچالاک";
+        document.getElementById('snowBtn').style.background = isSnowing ? "green" : "#444";
+    }
+    function saveToFirebase() {
+        const t = document.getElementById('mTitle').value, p = document.getElementById('mPoster').value, v = document.getElementById('mVideo').value, tp = document.getElementById('mType').value, l = document.getElementById('mLang').value, y = document.getElementById('mYear').value, s = document.getElementById('mSeason').value;
+        if(t && p && v) {
+            let finalV = v.includes('ok.ru/video/') ? v.replace('ok.ru/video/', 'ok.ru/videoembed/') : v;
+            db.collection("movies").add({ title: t, poster: p, video: finalV, type: tp, lang: l, year: y, season: s, createdAt: firebase.firestore.FieldValue.serverTimestamp() }).then(() => location.reload());
+        }
+    }
+    function loadData() {
+        db.collection("movies").orderBy("createdAt", "desc").onSnapshot(snap => {
+            allData = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            render(allData);
+        });
+    }
+    function render(data) {
+        const top5 = data.slice(0, 5);
+        if(top5.length > 0) {
+            document.getElementById('sliderWrap').style.display = 'block';
+            document.getElementById('sliderContent').innerHTML = top5.map((m, i) => `
+                <div class="slide ${i===0?'active':''}" style="background-image:url('${m.poster}')">
+                    <div class="slide-overlay">
+                        <div style="font-size:0.65rem; opacity:0.8;">${m.lang} | ${m.year || ''}</div>
+                        <h2 style="font-size:1.1rem; margin: 3px 0;">${m.title}</h2>
+                        <button class="watch-btn" onclick="playMovie('${m.video}','${m.title}')">سەیرکردن</button>
+                    </div>
+                </div>`).join('');
+            document.getElementById('dotsContainer').innerHTML = top5.map((_, i) => `<div class="dot ${i===0?'active':''}" onclick="goToSlide(${i})"></div>`).join('');
+        }
+        document.getElementById('mainGrid').innerHTML = data.map(m => `
+            <div class="card">
+                ${m.year ? `<div class="year-tag">${m.year}</div>` : ''}
+                <img src="${m.poster}" onclick="playMovie('${m.video}','${m.title}')">
+                <div style="padding:8px; font-size:0.75rem;">
+                    <div style="font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${m.title}</div>
+                    <div style="opacity:0.6; font-size:0.65rem;">${m.season || m.lang}</div>
+                </div>
+            </div>`).join('');
+    }
+    function goToSlide(i) {
+        const s = document.querySelectorAll('.slide'), d = document.querySelectorAll('.dot');
+        if(!s[i]) return;
+        s.forEach(x => x.classList.remove('active')); d.forEach(x => x.classList.remove('active'));
+        s[i].classList.add('active'); d[i].classList.add('active'); currentSlideIndex = i;
+    }
+    function toggleSub(id) { let s = document.getElementById(id); s.style.display = (s.style.display === 'block' ? 'none' : 'block'); }
+    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('active'); }
+    function toggleSearch() { let s = document.getElementById('searchBar'); s.style.display = (s.style.display === 'none' ? 'block' : 'none'); }
+    function toggleTypeFields() { document.getElementById('seriesFields').style.display = (document.getElementById('mType').value === 'زنجیرە' ? 'block' : 'none'); }
+    function closeModals() { document.querySelectorAll('.modal').forEach(m => m.style.display = 'none'); }
+    function filterData(t, l) { toggleSidebar(); if(t === 'هەمووی') render(allData); else render(allData.filter(m => m.type === t && m.lang === l)); }
+    function searchMovies() { const txt = document.getElementById('searchInput').value.toLowerCase(); render(allData.filter(m => m.title.toLowerCase().includes(txt) || (m.year && m.year.toString().includes(txt)))); }
+    function playMovie(u, t) { document.getElementById('videoModal').style.display = 'flex'; document.getElementById('vTitle').innerText = t; document.getElementById('videoFrame').src = u; }
+    function closeVideo() { document.getElementById('videoModal').style.display = 'none'; document.getElementById('videoFrame').src = ''; }
+
+    const canvas = document.getElementById('snow'), ctx = canvas.getContext('2d');
+    let pts = [];
+    function initSnow() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; pts = []; for(let i=0; i<45; i++) pts.push({x:Math.random()*canvas.width, y:Math.random()*canvas.height, r:Math.random()*2+0.5, s:Math.random()*0.5+0.2}); }
+    function drawSnow() { ctx.clearRect(0,0,canvas.width,canvas.height); if(isSnowing){ ctx.fillStyle = "white"; ctx.beginPath(); pts.forEach(p => { ctx.moveTo(p.x, p.y); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); p.y += p.s; if(p.y > canvas.height) p.y = -5; }); ctx.fill(); } requestAnimationFrame(drawSnow); }
+    setInterval(() => { let s = document.querySelectorAll('.slide'); if(s.length > 1) goToSlide((currentSlideIndex + 1) % s.length); }, 5000);
+    window.onresize = initSnow; initSnow(); drawSnow(); loadData();
+</script>
+</body>
+</html>
